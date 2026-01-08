@@ -5,7 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from app.services.reconciliation import ReconciliationService
 import io
 import pandas as pd
-import traceback # <--- NEW IMPORT
+import traceback 
+import json
 
 app = FastAPI(title="ZamZam Bank ARS Microservice")
 
@@ -30,7 +31,7 @@ async def reconcile_process(
         eth_content = await eth_file.read()
         zzb_content = await zzb_file.read()
 
-        result_df = recon_service.process_files(eth_content, zzb_content)
+        result_df = recon_service.process_files(eth_content, zzb_content)  
 
         # Categorical and NaN Fix
         for col in result_df.select_dtypes(include=['category']).columns:
@@ -48,6 +49,7 @@ async def reconcile_process(
             "status": "success",
             "summary": summary,
             "preview_data": preview
+           
         })
 
     except Exception as e:
@@ -58,19 +60,20 @@ async def reconcile_process(
 async def reconcile_download(
     eth_file: UploadFile = File(...),
     zzb_file: UploadFile = File(...)
-):
+): 
     try:
         eth_content = await eth_file.read()
         zzb_content = await zzb_file.read()
 
         result_df = recon_service.process_files(eth_content, zzb_content)
-        
+     
+        json_output = json.dumps(result_df.to_dict(orient='records'))
         excel_data = recon_service.generate_excel_report(result_df)
 
         return StreamingResponse(
             io.BytesIO(excel_data),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=reconciliation_report.xlsx"}
+            headers={"Content-Disposition": "attachment; filename=reconciliation_report.xlsx"} 
         )
 
     except Exception as e:
