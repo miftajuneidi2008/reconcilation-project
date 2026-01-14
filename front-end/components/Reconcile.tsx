@@ -34,8 +34,7 @@ export default function Reconcile() {
   const [result, setResult] = useState<APIResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
- 
-  const API_URL = "http://127.0.0.1:8000/api/v1";
+  const API_URL = "http://127.0.0.1:8080/api/v1/reconcile";
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -66,14 +65,11 @@ export default function Reconcile() {
 
     try {
       const response = await axios.post<APIResponse>(
-        `${API_URL}/reconcile`,
+        `${API_URL}`, 
         formData,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-        }
+        { headers: { "Content-Type": "multipart/form-data" } }
       );
       setResult(response.data);
-      console.log("Reconciliation result:", response.data); 
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setError(
@@ -96,14 +92,10 @@ export default function Reconcile() {
     formData.append("zzb_file", zzbFile as Blob);
 
     try {
-      const response = await axios.post(
-        `${API_URL}/reconcile/download`,
-        formData,
-        {
-          responseType: "blob", // Important for handling binary files
-          headers: { "Content-Type": "multipart/form-data" },
-        }
-      );
+      const response = await axios.post(`${API_URL}/download`, formData, {
+        responseType: "blob",
+        headers: { "Content-Type": "multipart/form-data" },
+      });
 
       // Create a link to download the file
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -116,8 +108,8 @@ export default function Reconcile() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch (err: unknown) { 
-        console.log(err);
+    } catch (err: unknown) {
+      console.log(err);
       setError("Failed to download the report. Check the file formats.");
     } finally {
       setLoading(false);
@@ -290,7 +282,6 @@ export default function Reconcile() {
                 icon={<FileSpreadsheet className="w-5 h-5" />}
               />
             </div>
-
           </div>
         )}
       </div>
@@ -307,7 +298,7 @@ function SummaryCard({
   title: string;
   value: number;
   color: string;
-  icon: React.ReactNode; 
+  icon: React.ReactNode;
 }) {
   return (
     <div

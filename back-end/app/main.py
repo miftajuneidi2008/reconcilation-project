@@ -66,8 +66,6 @@ async def reconcile_download(
         zzb_content = await zzb_file.read()
 
         result_df = recon_service.process_files(eth_content, zzb_content)
-     
-        json_output = json.dumps(result_df.to_dict(orient='records'))
         excel_data = recon_service.generate_excel_report(result_df)
 
         return StreamingResponse(
