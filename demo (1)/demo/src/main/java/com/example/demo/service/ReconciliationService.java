@@ -17,7 +17,7 @@ public class ReconciliationService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    public ResponseEntity<String> processReconcile(MultipartFile ethFile, MultipartFile zzbFile) {
+    public ResponseEntity<String> processReconcile(MultipartFile ethFile, MultipartFile zzbFile,) {
         return forwardToFastApi("/reconcile", ethFile, zzbFile, String.class);
     }
 
@@ -25,15 +25,16 @@ public class ReconciliationService {
         return forwardToFastApi("/reconcile/download", ethFile, zzbFile, Resource.class);
     }
 
-    private <T> ResponseEntity<T> forwardToFastApi(String endpoint, MultipartFile eth, MultipartFile zzb, Class<T> responseType) {
+    private <T> ResponseEntity<T> forwardToFastApi(String endpoint, MultipartFile eth, MultipartFile zzb, String reconType, Class<T> responseType) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("eth_file", eth.getResource());
         body.add("zzb_file", zzb.getResource());
+        body.add("recon_type", reconType);
 
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
-        return restTemplate.postForEntity(fastApiBaseUrl + endpoint, requestEntity, responseType);
+    return restTemplate.postForEntity(fastApiBaseUrl + endpoint, requestEntity, responseType);
     }
 }

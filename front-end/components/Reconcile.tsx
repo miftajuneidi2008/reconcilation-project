@@ -10,6 +10,7 @@ import {
   Download,
   BarChart3,
   Loader2,
+  ChevronDown,
 } from "lucide-react";
 
 // Define Types for the API Response
@@ -27,15 +28,21 @@ interface APIResponse {
   preview_data: PreviewRow[];
 }
 
+const reconOptions = [
+  { value: "atm", label: "ATM Transactions" },
+  { value: "tele", label: "Tele Transactions" },
+  { value: "mpesa", label: "M-Pesa Transactions" },
+];
 export default function Reconcile() {
   const [ethFile, setEthFile] = useState<File | null>(null);
   const [zzbFile, setZzbFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [reconType, setReconType] = useState<string>("");
   const [result, setResult] = useState<APIResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const API_URL = "http://127.0.0.1:8080/api/v1/reconcile";
-
+  console.log("Selected Recon Type:", reconType);
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     type: "eth" | "zzb"
@@ -62,14 +69,14 @@ export default function Reconcile() {
     const formData = new FormData();
     formData.append("eth_file", ethFile as Blob);
     formData.append("zzb_file", zzbFile as Blob);
+     formData.append("recon_type", reconType);
 
     try {
-      const response = await axios.post<APIResponse>(
-        `${API_URL}`, 
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
+      const response = await axios.post<APIResponse>(`${API_URL}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       setResult(response.data);
+      console.log(response.data);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setError(
@@ -90,6 +97,7 @@ export default function Reconcile() {
     const formData = new FormData();
     formData.append("eth_file", ethFile as Blob);
     formData.append("zzb_file", zzbFile as Blob);
+    formData.append("recon_type", reconType); 
 
     try {
       const response = await axios.post(`${API_URL}/download`, formData, {
@@ -143,7 +151,30 @@ export default function Reconcile() {
             <UploadCloud className="text-teal-600" /> Upload Reconciliation
             Files
           </h2>
-
+          <div className="mb-8 p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Step 1: Select Reconciliation Category
+            </label>
+            <div className="relative">
+              <select
+                value={reconType}
+                onChange={(e) => setReconType(e.target.value)}
+                className="w-full appearance-none bg-white border border-slate-300 text-slate-700 py-3 px-4 pr-10 rounded-lg leading-tight focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
+              >
+                <option value="" disabled>
+                  Choose a category...
+                </option>
+                {reconOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <ChevronDown className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* EthSwitch Input */}
             <div>
@@ -225,7 +256,7 @@ export default function Reconcile() {
           <div className="mt-8 flex gap-4">
             <button
               onClick={handlePreview}
-              disabled={loading}
+              disabled={loading || reconType === ""}
               className="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center gap-2 transition disabled:opacity-50"
             >
               {loading ? (
@@ -238,7 +269,7 @@ export default function Reconcile() {
 
             <button
               onClick={handleDownload}
-              disabled={loading}
+              disabled={loading || reconType === ""}
               className="flex-1 bg-slate-800 hover:bg-slate-900 text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center gap-2 transition disabled:opacity-50"
             >
               {loading ? (

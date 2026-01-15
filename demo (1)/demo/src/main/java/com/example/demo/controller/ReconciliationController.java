@@ -17,15 +17,18 @@ public class ReconciliationController {
 
     @PostMapping
     public ResponseEntity<String> reconcile(
-            @RequestParam("eth_file") MultipartFile ethFile,
-            @RequestParam("zzb_file") MultipartFile zzbFile) {
-        return reconciliationService.processReconcile(ethFile, zzbFile);
+        @RequestParam("eth_file") MultipartFile ethFile,
+        @RequestParam("zzb_file") MultipartFile zzbFile,
+        @RequestParam("recon_type") String reconType) { // Add this
+    return reconciliationService.processReconcile(ethFile, zzbFile, reconType); 
+        
     }
 
     @PostMapping("/download")
     public ResponseEntity<Resource> download(
-            @RequestParam("eth_file") MultipartFile ethFile,
-            @RequestParam("zzb_file") MultipartFile zzbFile) {
-        return reconciliationService.downloadReconcile(ethFile, zzbFile);
+           @RequestParam("eth_file") MultipartFile ethFile,
+        @RequestParam("zzb_file") MultipartFile zzbFile,
+        @RequestParam("recon_type") String reconType) { // Add this
+    return reconciliationService.downloadReconcile(ethFile, zzbFile, reconType);
     }
 }

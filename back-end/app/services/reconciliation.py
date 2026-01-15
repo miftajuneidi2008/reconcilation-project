@@ -5,82 +5,111 @@ from app.utils.excel_parser import load_excel_dynamic, clean_currency
 
 class ReconciliationService:
     
-    def process_files(self, eth_content: bytes, zzb_content: bytes):
+    def process_files(self, eth_content: bytes, zzb_content: bytes, recon_type: str = "atm"):
         """
-        Loads files, standardizes columns, and performs the Left Merge (ZamZam vs EthSwitch).
+        Modified to handle multiple reconciliation types: atm, tele, mpesa.
         """
-        # 1. Ingest Data (Dynamic Header Detection)
-        print("--- Processing EthSwitch File ---")
-        # We look for specific columns to find the header
-        df_eth = load_excel_dynamic(eth_content, ['REFNUM', 'AMOUNT', 'PAN'], default_row=3)
-        
-        print("--- Processing ZamZam File ---")
-        # We look for specific columns to find the header
-        df_zzb = load_excel_dynamic(zzb_content, ['TRN_REF_NO', 'AMOUNT', 'RRN'], default_row=8)
+        recon_type = str(recon_type).lower().strip()
 
-        # 2. Standardize Columns to match your specific script variables
-        self.rename_for_logic(df_eth, is_eth=True)
-        self.rename_for_logic(df_zzb, is_eth=False)
-
-        # 3. Data Cleaning 
-        # Ensure RRN/Refnum are strings and strip spaces
-        if 'Refnum_F37' in df_eth.columns:
-            df_eth['Refnum_F37'] = df_eth['Refnum_F37'].astype(str).str.strip()
-            # Drop duplicates in EthSwitch to prevent explosion during merge
-            df_eth = df_eth.drop_duplicates(subset=['Refnum_F37'])
-        
-        if 'RRN' in df_zzb.columns:
-            df_zzb['RRN'] = df_zzb['RRN'].astype(str).str.strip()
-
-        # Ensure 'Transaction_Description' is string and fill NaN
-        if 'Transaction_Description' in df_eth.columns:
-            df_eth['Transaction_Description'] = df_eth['Transaction_Description'].astype(str).fillna('Unknown')
+        # 1. Define required columns and Merge Keys based on Category
+        if recon_type == "mpesa":
+            # M-Pesa logic based on your new figures
+            eth_required = ['RECEIPT NO.', 'LINKED TRANSACTION ID', 'REASON TYPE'] 
+            zzb_required = ['ZAMZAM_REF_NO', 'AMOUNT', 'CONVERSION_ID']
+            left_key = 'Match_Key'
+            right_key = 'Match_Key'
+        elif recon_type == "tele":
+            # Tele logic
+            eth_required = ['ORDER_ID', 'AMOUNT', 'REF_NO'] 
+            zzb_required = ['TRN_REF_NO', 'AMOUNT', 'TXNREF']
+            left_key = 'Match_Key'
+            right_key = 'Match_Key'
         else:
-            # Create it if it doesn't exist so merge doesn't fail later
-            df_eth['Transaction_Description'] = 'Unknown'
+            # Default ATM/EthSwitch logic
+            eth_required = ['REFNUM', 'AMOUNT', 'PAN']
+            zzb_required = ['TRN_REF_NO', 'AMOUNT', 'RRN']
+            left_key = 'RRN'
+            right_key = 'Refnum_F37'
 
-        # 4. Perform the Merge (Exact Logic: Left Join on RRN = Refnum_F37)
-        # Left Join: Keep all ZamZam rows, find matching EthSwitch rows
+        # 2. Ingest Data (Dynamic detection)
+        df_eth = load_excel_dynamic(eth_content, eth_required, default_row=0)
+        df_zzb = load_excel_dynamic(zzb_content, zzb_required, default_row=0)
+
+        # 3. Standardize Columns based on the selected recon_type
+        self.rename_for_logic(df_eth, is_eth=True, recon_type=recon_type)
+        self.rename_for_logic(df_zzb, is_eth=False, recon_type=recon_type)
+ 
+        # 4. Data Cleaning
+        # Strip strings and drop duplicates on the matching keys
+        if right_key in df_eth.columns:
+            df_eth[right_key] = df_eth[right_key].astype(str).str.strip()
+            # Drop duplicates in provider file to prevent row explosion
+            df_eth = df_eth.drop_duplicates(subset=[right_key])
+        
+        if left_key in df_zzb.columns:
+            df_zzb[left_key] = df_zzb[left_key].astype(str).str.strip()
+
+        # Ensure Description exists for report generation
+        desc_col = 'Transaction_Description'
+        if desc_col not in df_eth.columns:
+            df_eth[desc_col] = recon_type.upper() + " Transaction"
+
+        # 5. Perform the Merge
         try:
             merged_df = pd.merge(
                 df_zzb, 
                 df_eth, 
-                left_on='RRN', 
-                right_on='Refnum_F37', 
+                left_on=left_key, 
+                right_on=right_key, 
                 how='left', 
                 indicator=True
             )
         except KeyError as e:
-            raise KeyError(f"Merge failed. Missing columns. Found: ZZB={df_zzb.columns.tolist()}, ETH={df_eth.columns.tolist()}")
+            raise KeyError(f"Merge failed. Expected {left_key} and {right_key}. Found ZZB: {df_zzb.columns.tolist()}, Provider: {df_eth.columns.tolist()}")
 
-        # 5. Add Recon_Status for the Frontend Dashboard (JSON Preview)
-        # We translate the '_merge' indicator to your statuses
+        # 6. Map Statuses
         merged_df['Recon_Status'] = merged_df['_merge'].map({
             'both': 'MATCHED',
-            'left_only': 'MISSING_IN_SWITCH', # Exists in ZZB (Left), not in ETH
-            'right_only': 'MISSING_IN_BANK'   # Should not happen in Left Join
+            'left_only': 'MISSING_IN_PROVIDER', 
+            'right_only': 'MISSING_IN_BANK'   
         }).astype(str)
 
         return merged_df
 
-    def rename_for_logic(self, df, is_eth=False):
+    def rename_for_logic(self, df, is_eth=False, recon_type="atm"):
         """
-        Maps the raw column names from the Excel to the specific variable names 
-        used in your provided script (e.g., 'Refnum_F37', 'Issuer', etc.)
+        Maps raw columns to a unified schema. 
         """
-        # Create a mapping of UpperCase Raw Name -> Your Script Name
         rename_map = {}
         for col in df.columns:
             upper_col = col.strip().upper()
             
-            if is_eth:
-                if 'REFNUM' in upper_col: rename_map[col] = 'Refnum_F37'
-                elif 'TRANSACTION_DESCRIPTION' in upper_col or 'TRANSACTION DESCRIPTION' in upper_col: rename_map[col] = 'Transaction_Description'
-                elif 'ISSUER' in upper_col: rename_map[col] = 'Issuer'
-                elif 'ACQUIRER' in upper_col: rename_map[col] = 'Acquirer'
+            if recon_type == "mpesa":
+                if is_eth: # M-Pesa Provider File
+                    if 'LINKED TRANSACTION ID' in upper_col: rename_map[col] = 'Match_Key'
+                    elif 'REASON TYPE' in upper_col: rename_map[col] = 'Transaction_Description'
+                    elif 'RECEIPT NO' in upper_col: rename_map[col] = 'Provider_Ref'
+                else: # ZamZam M-Pesa File
+                    if 'CONVERSION_ID' in upper_col: rename_map[col] = 'Match_Key'
+                    elif 'TRANSACTION_DESC' in upper_col: rename_map[col] = 'Transaction_Description'
+            
+            elif recon_type == "tele":
+                if is_eth: # Tele Provider File
+                    if 'ORDER_ID' in upper_col: rename_map[col] = 'Match_Key'
+                    elif 'TRANSACTION_TYP' in upper_col: rename_map[col] = 'Transaction_Description'
+                else: # ZamZam File
+                    if 'TXNREF' in upper_col: rename_map[col] = 'Match_Key'
+                    elif 'TRANSACTION_DESC' in upper_col: rename_map[col] = 'Transaction_Description'
+            
             else:
-                if 'RRN' in upper_col: rename_map[col] = 'RRN'
-                # Map ZamZam specific if needed
+                # ATM/EthSwitch logic
+                if is_eth:
+                    if 'REFNUM' in upper_col: rename_map[col] = 'Refnum_F37'
+                    elif 'TRANSACTION_DESCRIPTION' in upper_col: rename_map[col] = 'Transaction_Description'
+                    elif 'ISSUER' in upper_col: rename_map[col] = 'Issuer'
+                    elif 'ACQUIRER' in upper_col: rename_map[col] = 'Acquirer'
+                else:
+                    if 'RRN' in upper_col: rename_map[col] = 'RRN'
                 
         df.rename(columns=rename_map, inplace=True)
 
