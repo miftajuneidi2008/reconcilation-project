@@ -41,7 +41,7 @@ export default function Reconcile() {
   const [result, setResult] = useState<APIResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const API_URL = "http://127.0.0.1:8080/api/v1/reconcile";
+const API_URL = "http://127.0.0.1:8000/api/v1";
   console.log("Selected Recon Type:", reconType);
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -69,14 +69,18 @@ export default function Reconcile() {
     const formData = new FormData();
     formData.append("eth_file", ethFile as Blob);
     formData.append("zzb_file", zzbFile as Blob);
-     formData.append("recon_type", reconType);
+    formData.append("recon_type", reconType);
 
     try {
-      const response = await axios.post<APIResponse>(`${API_URL}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+        const response = await axios.post<APIResponse>(
+        `${API_URL}/reconcile`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
       setResult(response.data);
-      console.log(response.data);
+      console.log("API Response:", response.data);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setError(
@@ -100,7 +104,7 @@ export default function Reconcile() {
     formData.append("recon_type", reconType); 
 
     try {
-      const response = await axios.post(`${API_URL}/download`, formData, {
+      const response = await axios.post(`${API_URL}/reconcile/download`, formData, {
         responseType: "blob",
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -302,7 +306,7 @@ export default function Reconcile() {
               />
               <SummaryCard
                 title="Missing in Switch"
-                value={result.summary.MISSING_IN_SWITCH || 0}
+                value={result.summary.MISSING_IN_PROVIDER || 0}
                 color="bg-red-100 text-red-800 border-red-200"
                 icon={<AlertTriangle className="w-5 h-5" />}
               />

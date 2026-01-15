@@ -27,7 +27,7 @@ recon_service = ReconciliationService()
 async def reconcile_process(
     eth_file: UploadFile = File(...),
     zzb_file: UploadFile = File(...),
-    recon_type: str = Form("atm")
+    recon_type: str = Form("atm")              
 ):
     try:
         recon_type = recon_type.lower().strip()
@@ -70,25 +70,32 @@ async def reconcile_process(
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/v1/reconcile/download")
 async def reconcile_download(
     eth_file: UploadFile = File(...),
-    zzb_file: UploadFile = File(...)
+    zzb_file: UploadFile = File(...),
+    recon_type: str = Form("atm") 
 ): 
     try:
+        recon_type = recon_type.lower().strip()
         eth_content = await eth_file.read()
         zzb_content = await zzb_file.read()
 
-        result_df = recon_service.process_files(eth_content, zzb_content)
-        excel_data = recon_service.generate_excel_report(result_df)
+        # Pass recon_type to process_files
+        result_df = recon_service.process_files(eth_content, zzb_content, recon_type)
+        
+        # Pass recon_type to generate_excel_report for dynamic labeling
+        excel_data = recon_service.generate_excel_report(result_df, recon_type)
+
+        filename = f"{recon_type}_reconciliation_report.xlsx"
 
         return StreamingResponse(
             io.BytesIO(excel_data),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=reconciliation_report.xlsx"} 
+            headers={"Content-Disposition": f"attachment; filename={filename}"} 
         )
 
     except Exception as e:
-        # This will now show the REAL error in your terminal
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
