@@ -12,8 +12,8 @@ import {
   Loader2,
   ChevronDown,
 } from "lucide-react";
+import Navbar from "./Navbar";
 
-// Define Types for the API Response
 interface Summary {
   [key: string]: number;
 }
@@ -26,12 +26,14 @@ interface APIResponse {
   status: string;
   summary: Summary;
   preview_data: PreviewRow[];
+  mismatches: PreviewRow[];
 }
 
 const reconOptions = [
   { value: "atm", label: "ATM Transactions" },
-  { value: "tele", label: "Tele Transactions" },
-  { value: "mpesa", label: "M-Pesa Transactions" },
+  { value: "tele", label: "Tele Birr Out going" },
+  { value: "mpesa", label: "M Pesa Transactions" },
+  { value: "tele-incoming", label: "Tele Birr Incoming" },
 ];
 export default function Reconcile() {
   const [ethFile, setEthFile] = useState<File | null>(null);
@@ -41,7 +43,7 @@ export default function Reconcile() {
   const [result, setResult] = useState<APIResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-const API_URL = "http://127.0.0.1:8000/api/v1";
+  const API_URL = "http://127.0.0.1:8080/api/v1";
   console.log("Selected Recon Type:", reconType);
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -72,7 +74,7 @@ const API_URL = "http://127.0.0.1:8000/api/v1";
     formData.append("recon_type", reconType);
 
     try {
-        const response = await axios.post<APIResponse>(
+      const response = await axios.post<APIResponse>(
         `${API_URL}/reconcile`,
         formData,
         {
@@ -80,7 +82,7 @@ const API_URL = "http://127.0.0.1:8000/api/v1";
         }
       );
       setResult(response.data);
-      console.log("API Response:", response.data);
+      setReconType("");
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setError(
@@ -101,13 +103,17 @@ const API_URL = "http://127.0.0.1:8000/api/v1";
     const formData = new FormData();
     formData.append("eth_file", ethFile as Blob);
     formData.append("zzb_file", zzbFile as Blob);
-    formData.append("recon_type", reconType); 
+    formData.append("recon_type", reconType);
 
     try {
-      const response = await axios.post(`${API_URL}/reconcile/download`, formData, {
-        responseType: "blob",
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const response = await axios.post(
+        `${API_URL}/reconcile/download`,
+        formData,
+        {
+          responseType: "blob",
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
 
       // Create a link to download the file
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -125,29 +131,15 @@ const API_URL = "http://127.0.0.1:8000/api/v1";
       setError("Failed to download the report. Check the file formats.");
     } finally {
       setLoading(false);
+      setReconType("");
     }
   };
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800 font-sans">
       {/* Header */}
-      <div className="bg-teal-700 text-white py-6 shadow-md">
-        <div className="max-w-5xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-white rounded-lg">
-              {/* Simple Logo Placeholder */}
-              <BarChart3 className="text-teal-700 w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">ZamZam Bank ARS</h1>
-              <p className="text-teal-100 text-sm">
-                Automated Reconciliation System - Phase 1
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
+     
+      <Navbar />
       <div className="max-w-5xl mx-auto px-6 py-10">
         {/* File Upload Section */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
@@ -183,7 +175,7 @@ const API_URL = "http://127.0.0.1:8000/api/v1";
             {/* EthSwitch Input */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                EthSwitch File (Excel)
+                Partner File (Excel)
               </label>
               <div
                 className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors ${
@@ -218,7 +210,7 @@ const API_URL = "http://127.0.0.1:8000/api/v1";
             {/* ZamZam Input */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                ZamZam Ledger (Excel)
+                ZamZam File (Excel)
               </label>
               <div
                 className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors ${
@@ -319,6 +311,9 @@ const API_URL = "http://127.0.0.1:8000/api/v1";
             </div>
           </div>
         )}
+        {result &&(
+          <Mismatched data={result.mismatches} />
+        )}
       </div>
     </main>
   );
@@ -347,3 +342,88 @@ function SummaryCard({
     </div>
   );
 }
+
+interface DataRow {
+  [key: string]: string | number | null;
+}
+
+function Mismatched({ data }: { data: DataRow[] }) {
+   if (!data || data.length === 0) return null;
+
+  // 1. Identify which keys have at least one valid value across all rows
+  const allKeys = Object.keys(data[0]);
+  
+  const activeHeaders = allKeys.filter((key) => {
+    return data.some((row) => {
+      const val = row[key];
+      return (
+        val !== null && 
+        val !== undefined && 
+        val !== "" && 
+        String(val).toLowerCase() !== "nan"
+      );
+    });
+  });
+
+  
+  const formatHeader = (text: string) => {
+    return text.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
+  return (
+    <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+        <h3 className="font-semibold text-slate-700">Data Preview (Mismatches)</h3>
+        <span className="text-xs font-medium bg-teal-100 text-teal-700 px-2 py-1 rounded">
+          {activeHeaders.length} Columns Displayed
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-100 border-b border-slate-200">
+              {activeHeaders.map((header) => (
+                <th
+                  key={header}
+                  className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap"
+                >
+                  {formatHeader(header)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {data.map((row, rowIndex) => (
+              <tr 
+                key={rowIndex} 
+                className="hover:bg-slate-50 transition-colors odd:bg-white even:bg-slate-50/30"
+              >
+                {activeHeaders.map((header) => {
+                  const value = row[header];
+                  const isEmpty = value === "" || String(value).toLowerCase() === "nan";
+                  
+                  return (
+                    <td 
+                      key={header} 
+                      className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap"
+                    >
+                      {isEmpty ? (
+                        <span className="text-slate-300">-</span>
+                      ) : (
+                        String(value)
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+
